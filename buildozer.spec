@@ -13,11 +13,12 @@ fullscreen = 1
 log_level = 2
 warn_on_root = 1
 
+
 [android]
 android.api = 33
 android.minapi = 21
-android.ndk = 23b
+android.ndk = 25b
+android.sdk = 33
+android.build_tools_version = 33.0.2
 android.arch = armeabi-v7a
-android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
-android.allow_backup = False
-android.manifest.placeholders = appName=Store AP
+android.permissions = INTERNET
