@@ -1,14 +1,95 @@
-from kivy.app import App
-from kivy.uix.button import Button
-from kivy.uix.boxlayout import BoxLayout
+name: Build APK
 
-class ShoppingApp(App):
-    def build(self):
-        layout = BoxLayout(orientation='vertical')
-        layout.add_widget(Button(text="Add to Cart"))
-        layout.add_widget(Button(text="Checkout"))
-        layout.add_widget(Button(text="View Orders"))
-        return layout
+on:
+  push:
+    branches:
+      - main
 
-if __name__ == "__main__":
-    ShoppingApp().run()
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Set up Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          build-essential \
+          libssl-dev \
+          libffi-dev \
+          python3-dev \
+          python3-pip \
+          git \
+          zip \
+          unzip \
+          libgl1 \
+          libglu1-mesa \
+          libsqlite3-dev \
+          zlib1g-dev \
+          wget \
+          curl
+
+    - name: Install Python packages
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade cython
+        pip install buildozer==1.5.0
+
+    - name: Prepare Android SDK and NDK
+      env:
+        ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+        ANDROID_HOME: ${{ github.workspace }}/android-sdk
+        ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
+      run: |
+        mkdir -p "$ANDROID_SDK_ROOT" "$ANDROID_NDK_HOME" "$HOME/.android"
+        # Download commandline tools
+        cd "$ANDROID_SDK_ROOT"
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip
+        unzip -q cmdtools.zip
+        mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+        mv cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/" || true
+
+        # Ensure sdkmanager is in PATH
+        export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+
+        # Accept licenses non-interactively
+        yes | sdkmanager --licenses
+
+        # Install specific versions to avoid 36.1 prompts
+        sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.2.9519653"
+
+        # Expose env vars (for Buildozer and p4a)
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        echo "ANDROIDSDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROIDNDK=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        echo "PATH=$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+
+        # Quiet warnings about repositories.cfg
+        touch "$HOME/.android/repositories.cfg"
+
+    - name: Build APK (debug)
+      timeout-minutes: 40
+      run: |
+        buildozer android debug
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: StoreAP-APK
+        path: bin/*.apk
